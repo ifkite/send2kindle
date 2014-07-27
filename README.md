@@ -1,2 +1,4 @@
-send2kindle
-===========
+# send2kindle #
+
+## requirements ##
+* nose

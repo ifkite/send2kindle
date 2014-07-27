@@ -1,0 +1,5 @@
+*.pyc
+*.db
+*.pkl
+test.py
+/venv

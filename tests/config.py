@@ -1,0 +1,2 @@
+DEBUG_LEV = 1
+PATH = '.'
