@@ -9,37 +9,42 @@ import bsddb
 import re
 import pickle
 import os
+from getpass import getpass
 
 class Config(dict):
 	def __init__(self):
 		dict.__init__(self)
 	
 	def fromPyFile(self,filename):
+		'''examples'''
 		mod = type(os)('config')
 		mod.__file__ = filename
 		execfile(filename,mod.__dict__)
 		self.fromObj(mod)
-		
+
+	# class or object except basestring
 	def fromObj(self,obj):
+		'''exampes'''
 		for key in dir(obj):
 			if key.isupper():
 				self[key] = getattr(obj,key)
 
 class Mail:
-	def __init__(self,kindleAccount=None,validMail=None,mailPasswd=None):
+	def __init__(self,kindleAccount=None,validMail=None):
 	    self.kindleAccount = kindleAccount
-	    self.mail = (validMail,mailPasswd)
+	    self.user = validMail
+	    self.passwd = getPasswd()
 	    self.smtpConn = SMTPConn()
 	    self.config = Config()
 	# connect smtp server  
 	def connect(self):
 		# self.smtp=smtplib.SMTP()
-		smtpServer = self.smtpConn.configSMTP(self.mail[0])
+		smtpServer = self.smtpConn.configSMTP(self.user)
 		self.smtpConn.connect(smtpServer)
 
 	# login smtp server with user account and passwd
 	def login(self):
-		self.smtpConn.login(self.mail[0],self.mail[1])
+		self.smtpConn.login(self.user,self.passwd)
 
 	def logout(self):
 		#clear passwd
@@ -56,7 +61,7 @@ class Mail:
 			msg = MIMEMultipart()
 			send_to = [self.kindleAccount]
 			msg['Subject'] = 'python email2kindle ' + attFile
-			msg['From'] = self.mail[0]
+			msg['From'] = self.user
 			msg['To'] = COMMASPACE.join(send_to)
 			msg['Date'] = formatdate(localtime=True)
 			
@@ -71,23 +76,20 @@ class Mail:
 			part.add_header('Content-Disposition', 'attachment; filename="%s"' % attFile)
 			msg.attach(part)
 
-			self.smtpConn.sendmail(self.mail[0],send_to,msg.as_string())
+			self.smtpConn.sendmail(self.user,send_to,msg.as_string())
 		updateFile()
 
-def getInput():
-	pass
-
 # PASSED
-def getSMTP(input_func):
-	def wrapper(mailName):
-		return input_func(mailName)
+def getInput(input_func):
+	def wrapper(inputStr):
+		return input_func(inputStr)
 	return wrapper
 
-@getSMTP
+@getInput
 def inputSMTP(mailName):
 	return raw_input('please input %s smtp Server: ' %(mailName))
 
-def checkMailFormat(mail):
+def checkMailFormat(mailName):
 	pass
 
 def isPklExist():
@@ -120,14 +122,21 @@ def updateFile():
 def findNewFiles(fnames,newFnames):
 	return list(set(newFnames) - set(fnames))
 
+def getPasswd():
+	getPassTwice = lambda:(getpass('input passwd of mail: '),getpass('input passwd again: '))
+	p1,p2 = getPassTwice()
+	while p1 != p2:
+		p1,p2 = getPassTwice()
+	return p1
+
 class SMTPConn(smtplib.SMTP):
 	def __init__(self):
 		smtplib.SMTP.__init__(self)
 
 	#detect the smtp server for user,return the suitable SMTP server
-	def configSMTP(self,mail):	
+	def configSMTP(self,mailName):	
 		mailPat = '[^@]+@([^@]+\.[^@]+)'
-		m = re.match(mailPat,mail)
+		m = re.match(mailPat,mailName)
 		# should check after user inputing their mail 
 		# if not m:		
 		serverName = m.groups()[0]
@@ -136,30 +145,30 @@ class SMTPConn(smtplib.SMTP):
 		if smtpDb.has_key(serverName):
 			smtpName = smtpDb[serverName]
 		else:
-			smtpName = inputSMTP(mail)
+			smtpName = inputSMTP(mailName)
 			smtpDb[serverName] = smtpName
 			smtpDb.sync()
 		smtpDb.close()
 		return smtpName
 # --------
-	def modifySMTP(self,mail):
+	def modifySMTP(self,mailName):
 		smtpDb = bsddb.hashopen('smtp.db')
 		if smtpDb.has_key(serverName):
-			smtpDb[serverName] = inputSMTP(mail)
+			smtpDb[serverName] = inputSMTP(mailName)
 			smtpDb.sync()
 			smtpDb.close()
 
-	def displaySMTP(self,mail):
+	def displaySMTP(self,mailName):
 		smtpDb = bsddb.hashopen('smtp.db')
 		if smtpDb.has_key(serverName):
-			print mail,':',smtpDb[mail]
+			print mailName,':',smtpDb[mailName]
 		else:
-			print mail,':','None'
+			print mailName,':','None'
 		smtpDb.close()
 # --------
 
 if __name__ == '__main__':
-	mail = Mail(kindleAccount='example@kindle.me',validMail='yourmail@163.com',mailPasswd='passwd')
+	mail = Mail(kindleAccount='example@kindle.me',validMail='yourmail@163.com')
 	mail.connect()
 	mail.login()
 	mail.send2kindle()
