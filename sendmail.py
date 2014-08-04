@@ -11,6 +11,87 @@ import pickle
 import os
 from getpass import getpass
 
+import sys
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+import Queue
+
+import types
+
+class GetNameEventHandler(FileSystemEventHandler):
+    def __init__(self,pipe,stop_event):
+        super(GetNameEventHandler,self).__init__()
+        self.pipe = pipe
+        self._stop_event = stop_event
+
+    def getSet(self):
+        return self._stop_event.is_set()
+    
+    def on_created(self,event):
+        if not self.getSet():
+            try:
+                # self.queue.put(event.src_path)
+                # self.queue.join()
+                self.pipe.send(event.src_path)
+                time.sleep(0.1)
+            except:
+                pass
+
+class PrintPath(Thread):
+    def __init__(self,pipe,stop_event):
+        Thread.__init__(self)
+        self._stop_event = stop_event 
+        self.pipe = pipe
+        if hasattr(self,'daemon'):
+            self.daemon = True
+        else:
+            self.setDaemon(True)
+
+    def getSet(self):
+        return self._stop_event.is_set()    
+
+    def stop(self):
+        self._stop_event.set()
+    
+    def run(self):
+        while not self.getSet():
+            try:
+            # src_path = self.queue.get() 
+            # print src_path
+            # self.queue.task_done()
+                dat = self.pipe.recv()
+                print dat
+                time.sleep(0.1)
+            except:
+                break
+
+def main():
+    path = '.'
+    r_pipe,w_pipe = Pipe() 
+    event = Event()
+    event_handler = GetNameEventHandler(w_pipe,event)
+    printPath = PrintPath(r_pipe,event) 
+    printPath.start()
+
+    observer = Observer()
+    observer.schedule(event_handler, path, recursive=True)
+    observer.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        event.set()
+        # printPath.stop()
+        observer.stop()
+        sys.exit()
+
+    # DEAD LOCK
+    # printPath.join()
+    # observer.join()
+
 class Config(dict):
 	def __init__(self):
 		dict.__init__(self)
@@ -67,9 +148,12 @@ class Mail:
 			
 			with open(attFile) as f:
 				book = f.read()
+			
+			# need to test
 			# att = MIMEText(book,'base64','utf-8')
 			# att["Content-Type"] = 'application/octet-stream'  
 			# att["Content-Disposition"] = 'attachment; filename="%s"' %(attFile)
+			
 			part = MIMEBase('application', "octet-stream")
 			part.set_payload(book)
 			Encoders.encode_base64(part)
@@ -150,6 +234,7 @@ class SMTPConn(smtplib.SMTP):
 			smtpDb.sync()
 		smtpDb.close()
 		return smtpName
+
 # --------
 	def modifySMTP(self,mailName):
 		smtpDb = bsddb.hashopen('smtp.db')
@@ -168,8 +253,9 @@ class SMTPConn(smtplib.SMTP):
 # --------
 
 if __name__ == '__main__':
-	mail = Mail(kindleAccount='example@kindle.me',validMail='yourmail@163.com')
-	mail.connect()
-	mail.login()
-	mail.send2kindle()
-	mail.logout()
+	# mail = Mail(kindleAccount='example@kindle.me',validMail='yourmail@163.com')
+	# mail.connect()
+	# mail.login()
+	# mail.send2kindle()
+	# mail.logout()
+	main()
