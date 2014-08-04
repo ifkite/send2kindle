@@ -4,4 +4,3 @@
 * watchdog
 	* libyaml-dev
 * nose
-* watchdog
