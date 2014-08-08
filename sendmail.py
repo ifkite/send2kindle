@@ -5,22 +5,28 @@ from email.MIMEMultipart import MIMEMultipart
 from email.header import Header
 from email.Utils import COMMASPACE,formatdate
 from email import Encoders
+
 import bsddb
-import re
 import pickle
+import time
+import types
+import re
 import os
+import sys
+
 from getpass import getpass
 
-import sys
-import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 import Queue
-
-import types
+from multiprocessing import Pipe
+from threading import Thread
+from threading import Event
 
 class GetNameEventHandler(FileSystemEventHandler):
+	# there are other ways to communicate between each threads,
+	# for exampes, Queue, Pipe, shared memory 
     def __init__(self,pipe,stop_event):
         super(GetNameEventHandler,self).__init__()
         self.pipe = pipe
@@ -39,11 +45,15 @@ class GetNameEventHandler(FileSystemEventHandler):
             except:
                 pass
 
-class PrintPath(Thread):
-    def __init__(self,pipe,stop_event):
+    def stop(self):
+        self._stop_event.set()
+
+class SendMailThread(Thread):
+    def __init__(self,pipe,stop_event,mail):
         Thread.__init__(self)
         self._stop_event = stop_event 
         self.pipe = pipe
+        self.mail = mail
         if hasattr(self,'daemon'):
             self.daemon = True
         else:
@@ -55,43 +65,56 @@ class PrintPath(Thread):
     def stop(self):
         self._stop_event.set()
     
+    #send mail
     def run(self):
         while not self.getSet():
             try:
             # src_path = self.queue.get() 
             # print src_path
             # self.queue.task_done()
-                dat = self.pipe.recv()
-                print dat
+                attFile = self.pipe.recv()
+                self.mail.send2kindle(attFile)
+                print 'sent %s to kindle' %(attFile)
                 time.sleep(0.1)
             except:
                 break
 
 def main():
-    path = '.'
-    r_pipe,w_pipe = Pipe() 
-    event = Event()
-    event_handler = GetNameEventHandler(w_pipe,event)
-    printPath = PrintPath(r_pipe,event) 
-    printPath.start()
+	config = Config()
 
-    observer = Observer()
-    observer.schedule(event_handler, path, recursive=True)
-    observer.start()
+	#WARNING: what if config.py does not exist
+	# add some try catch code
+	config.fromPyFile('config.py')
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        event.set()
-        # printPath.stop()
-        observer.stop()
-        sys.exit()
+	mail = Mail(config)
+	mail.connect()
+	mail.login()
+
+	r_pipe,w_pipe = Pipe()
+	event = Event()
+	event_handler = GetNameEventHandler(w_pipe,event)
+	send_mail_thread = SendMailThread(r_pipe,event,mail)
+	send_mail_thread.start()
+	
+	observer = Observer()
+	path = config['BOOK_PATH']
+	observer.schedule(event_handler, path, recursive=True)
+	observer.start()
+	
+	try:
+		while True:
+			time.sleep(1)
+	except KeyboardInterrupt:
+		event.set()
+		observer.stop()
+		#NOTICE:tough code,need to change
+		sys.exit()
 
     # DEAD LOCK
     # printPath.join()
     # observer.join()
 
+#PASSED @Aug.7th.2014
 class Config(dict):
 	def __init__(self):
 		dict.__init__(self)
@@ -106,20 +129,24 @@ class Config(dict):
 	# class or object except basestring
 	def fromObj(self,obj):
 		'''exampes'''
+		#WARNING: what if no key exist
+		# add some try catch code
 		for key in dir(obj):
 			if key.isupper():
 				self[key] = getattr(obj,key)
 
 class Mail:
-	def __init__(self,kindleAccount=None,validMail=None):
-	    self.kindleAccount = kindleAccount
-	    self.user = validMail
-	    self.passwd = getPasswd()
+	def __init__(self,config):
+	    self.kindleAccount = config['KINDLE_ACCOUNT']
+	    self.user = config['USER']
+	    self.passwd = getPasswd(self.user)
 	    self.smtpConn = SMTPConn()
-	    self.config = Config()
+	    self.config = config
+	
 	# connect smtp server  
 	def connect(self):
-		# self.smtp=smtplib.SMTP()
+		# WARNING:what if connect to server failed
+		# add some try catch code
 		smtpServer = self.smtpConn.configSMTP(self.user)
 		self.smtpConn.connect(smtpServer)
 
@@ -128,40 +155,47 @@ class Mail:
 		self.smtpConn.login(self.user,self.passwd)
 
 	def logout(self):
-		#clear passwd
+		#close connection to smtp server
 		pass
 
 	#return status of send
-	def send2kindle(self):
-		#EOFError,pickle file can not be empty
-		if not isPklExist():
-			createPkl()
-		attFiles = getFiles()
-		for attFile in attFiles:
-			# for each file, send an email
-			msg = MIMEMultipart()
-			send_to = [self.kindleAccount]
-			msg['Subject'] = 'python email2kindle ' + attFile
-			msg['From'] = self.user
-			msg['To'] = COMMASPACE.join(send_to)
-			msg['Date'] = formatdate(localtime=True)
-			
-			with open(attFile) as f:
-				book = f.read()
-			
-			# need to test
-			# att = MIMEText(book,'base64','utf-8')
-			# att["Content-Type"] = 'application/octet-stream'  
-			# att["Content-Disposition"] = 'attachment; filename="%s"' %(attFile)
-			
-			part = MIMEBase('application', "octet-stream")
-			part.set_payload(book)
-			Encoders.encode_base64(part)
-			part.add_header('Content-Disposition', 'attachment; filename="%s"' % attFile)
-			msg.attach(part)
+	def send2kindle(self,attFile):
+		
+			#comments: EOFError,pickle file can not be empty
+		
+		# old code
+		# if not isPklExist():
+		# 	createPkl()
+		# attFiles = getFiles()
+		# for attFile in attFiles:
+		# old code
 
-			self.smtpConn.sendmail(self.user,send_to,msg.as_string())
-		updateFile()
+			# comments: for each file, send an email
+		
+		msg = MIMEMultipart()
+		send_to = [self.kindleAccount]
+		msg['Subject'] = 'python email2kindle ' + attFile
+		msg['From'] = self.user
+		msg['To'] = COMMASPACE.join(send_to)
+		msg['Date'] = formatdate(localtime=True)
+		with open(attFile) as f:
+			book = f.read()
+		# code that may take effect,@Jun.27th.2014
+		# att = MIMEText(book,'base64','utf-8')
+		# att["Content-Type"] = 'application/octet-stream'  
+		# att["Content-Disposition"] = 'attachment; filename="%s"' %(attFile)
+		
+		part = MIMEBase('application', "octet-stream")
+		part.set_payload(book)
+		Encoders.encode_base64(part)
+		part.add_header('Content-Disposition', 'attachment; filename="%s"' % attFile)
+		msg.attach(part)
+
+		self.smtpConn.sendmail(self.user,send_to,msg.as_string())
+		
+		# old code
+		# updateFile()
+		# old code
 
 # PASSED
 def getInput(input_func):
@@ -206,8 +240,9 @@ def updateFile():
 def findNewFiles(fnames,newFnames):
 	return list(set(newFnames) - set(fnames))
 
-def getPasswd():
-	getPassTwice = lambda:(getpass('input passwd of mail: '),getpass('input passwd again: '))
+#PASSED
+def getPasswd(userName):
+	getPassTwice = lambda:(getpass('input passwd of %s: '%(userName)),getpass('input passwd again: '))
 	p1,p2 = getPassTwice()
 	while p1 != p2:
 		p1,p2 = getPassTwice()
