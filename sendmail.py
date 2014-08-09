@@ -79,41 +79,6 @@ class SendMailThread(Thread):
             except:
                 break
 
-def main():
-	config = Config()
-
-	#WARNING: what if config.py does not exist
-	# add some try catch code
-	config.fromPyFile('config.py')
-
-	mail = Mail(config)
-	mail.connect()
-	mail.login()
-
-	r_pipe,w_pipe = Pipe()
-	event = Event()
-	event_handler = GetNameEventHandler(w_pipe,event)
-	send_mail_thread = SendMailThread(r_pipe,event,mail)
-	send_mail_thread.start()
-	
-	observer = Observer()
-	path = config['BOOK_PATH']
-	observer.schedule(event_handler, path, recursive=True)
-	observer.start()
-	
-	try:
-		while True:
-			time.sleep(1)
-	except KeyboardInterrupt:
-		event.set()
-		observer.stop()
-		#NOTICE:tough code,need to change
-		sys.exit()
-
-    # DEAD LOCK
-    # printPath.join()
-    # observer.join()
-
 #PASSED @Aug.7th.2014
 class Config(dict):
 	def __init__(self):
@@ -136,12 +101,14 @@ class Config(dict):
 				self[key] = getattr(obj,key)
 
 class Mail:
-	def __init__(self,config):
+	def __init__(self,config,send_strategy):
 	    self.kindleAccount = config['KINDLE_ACCOUNT']
 	    self.user = config['USER']
 	    self.passwd = getPasswd(self.user)
 	    self.smtpConn = SMTPConn()
 	    self.config = config
+
+	    self.send = types.MethodType(send_strategy,self)
 	
 	# connect smtp server  
 	def connect(self):
@@ -158,20 +125,7 @@ class Mail:
 		#close connection to smtp server
 		pass
 
-	#return status of send
 	def send2kindle(self,attFile):
-		
-			#comments: EOFError,pickle file can not be empty
-		
-		# old code
-		# if not isPklExist():
-		# 	createPkl()
-		# attFiles = getFiles()
-		# for attFile in attFiles:
-		# old code
-
-			# comments: for each file, send an email
-		
 		msg = MIMEMultipart()
 		send_to = [self.kindleAccount]
 		msg['Subject'] = 'python email2kindle ' + attFile
@@ -184,18 +138,36 @@ class Mail:
 		# att = MIMEText(book,'base64','utf-8')
 		# att["Content-Type"] = 'application/octet-stream'  
 		# att["Content-Disposition"] = 'attachment; filename="%s"' %(attFile)
-		
 		part = MIMEBase('application', "octet-stream")
 		part.set_payload(book)
 		Encoders.encode_base64(part)
 		part.add_header('Content-Disposition', 'attachment; filename="%s"' % attFile)
 		msg.attach(part)
-
 		self.smtpConn.sendmail(self.user,send_to,msg.as_string())
-		
-		# old code
-		# updateFile()
-		# old code
+	
+	def send(self):
+		pass
+
+def send_watchdog(self):
+	r_pipe,w_pipe = Pipe()
+	event = Event()
+	event_handler = GetNameEventHandler(w_pipe,event)
+	send_mail_thread = SendMailThread(r_pipe,event,self)
+	send_mail_thread.start()
+	
+	observer = Observer()
+	path = self.config['BOOK_PATH']
+	observer.schedule(event_handler, path, recursive=True)
+	observer.start()
+	
+	try:
+		while True:
+			time.sleep(1)
+	except KeyboardInterrupt:
+		event.set()
+		observer.stop()
+		#NOTICE:tough code,need to change
+		sys.exit()
 
 # PASSED
 def getInput(input_func):
@@ -288,9 +260,9 @@ class SMTPConn(smtplib.SMTP):
 # --------
 
 if __name__ == '__main__':
-	# mail = Mail(kindleAccount='example@kindle.me',validMail='yourmail@163.com')
-	# mail.connect()
-	# mail.login()
-	# mail.send2kindle()
-	# mail.logout()
-	main()
+	config = Config()
+	config.fromPyFile('config.py')
+	mail = Mail(config,send_watchdog)
+	mail.connect()
+	mail.login()
+	mail.send()
