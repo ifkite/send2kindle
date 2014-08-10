@@ -5,7 +5,9 @@ import types
 import re
 import os
 import sys
+from argparse import ArgumentParser
 import smtplib
+import socket
 
 import Queue
 from multiprocessing import Pipe
@@ -105,17 +107,23 @@ class Mail:
         self.kindleAccount = config['KINDLE_ACCOUNT']
         self.user = config['USER']
         self.passwd = getPasswd(self.user)
-        self.smtpConn = SMTPConn(config['CONNECT_TIMEOUT'])
         self.config = config
-
         self.send = types.MethodType(send_strategy,self)
 
     # connect smtp server
     def connect(self):
         # WARNING:what if connect to server failed
         # add some try catch code
-        smtpServer = self.smtpConn.configSMTP(self.user)
-        self.smtpConn.connect(smtpServer)
+        try:
+            self.smtpConn = SMTPConn(config['CONNECT_TIMEOUT'])
+            smtpServer = self.smtpConn.configSMTP(self.user)
+            self.smtpConn.connect(smtpServer)
+        except socket.timeout:
+            print 'error occured in connection with SMTP server,\n\
+                  1. check your network\n\
+                  2. check whether the imput of SMTP server is right'
+            sys.exit()
+            
 
     # login smtp server with user account and passwd
     def login(self):
@@ -244,27 +252,41 @@ class SMTPConn(smtplib.SMTP):
         smtpDb.close()
         return smtpName
 
-# --------
-    def modifySMTP(self,mailName):
-        smtpDb = bsddb.hashopen('smtp.db')
-        if smtpDb.has_key(serverName):
-            smtpDb[serverName] = inputSMTP(mailName)
-            smtpDb.sync()
-            smtpDb.close()
+def modify_smtp(modify_mail):
+    smtp_db = bsddb.hashopen('smtp.db')
+    smtp = raw_input('please input new smtp server: ')
+    #NOTICE:add some code to try to connect server
+    smtp_db[modify_mail] = smtp
+    print 'data modifed\n{0:18}  {1:18}'.format(modify_mail,smtp)
+    smtp_db.sync()
+    smtp_db.close()
 
-    def displaySMTP(self,mailName):
-        smtpDb = bsddb.hashopen('smtp.db')
-        if smtpDb.has_key(serverName):
-            print mailName,':',smtpDb[mailName]
-        else:
-            print mailName,':','None'
-        smtpDb.close()
-# --------
+def show_smtp():
+    smtp_db = bsddb.hashopen('smtp.db')
+    print '{0:18}  {1:18}'.format('mail','smtp server')
+    for key,val in smtp_db.items():
+        print '{0:18}  {1:18}'.format(key,val)
+    smtp_db.close()
+
+def any_parse():
+    parser = ArgumentParser()
+    parser.add_argument('--show',action='store_true')
+    parser.add_argument('--modify',dest='mail',default=None)
+    args=parser.parse_args()
+    if args.show:
+        show_smtp()
+        return True
+    elif args.mail is not None:
+        modify_smtp(args.mail)
+        return True
+    else:
+        return False
 
 if __name__ == '__main__':
-    config = Config()
-    config.fromPyFile('config.py')
-    mail = Mail(config,send_watchdog)
-    mail.connect()
-    mail.login()
-    mail.send()
+    if(not any_parse()):
+        config = Config()
+        config.fromPyFile('config.py')
+        mail = Mail(config,send_watchdog)
+        mail.connect()
+        mail.login()
+        mail.send()
