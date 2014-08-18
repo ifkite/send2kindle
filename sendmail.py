@@ -90,14 +90,18 @@ class Config(dict):
         '''examples'''
         mod = type(os)('config')
         mod.__file__ = filename
-        execfile(filename,mod.__dict__)
-        self.fromObj(mod)
-
+        try:
+            execfile(filename,mod.__dict__)
+            self.fromObj(mod)
+        except IOError:
+            print 'No such config file %s.\
+                   Check the spelling of config file name \
+                   or settings in code.' % (filename)
+            sys.exit()
+                   
     # class or object except basestring
     def fromObj(self,obj):
         '''exampes'''
-        #WARNING: what if no key exist
-        # add some try catch code
         for key in dir(obj):
             if key.isupper():
                 self[key] = getattr(obj,key)
@@ -112,10 +116,8 @@ class Mail:
 
     # connect smtp server
     def connect(self):
-        # WARNING:what if connect to server failed
-        # add some try catch code
         try:
-            self.smtpConn = SMTPConn(config['CONNECT_TIMEOUT'])
+            self.smtpConn = SMTPConn(timeout=config['CONNECT_TIMEOUT'])
             smtpServer = self.smtpConn.configSMTP(self.user)
             self.smtpConn.connect(smtpServer)
         except socket.timeout:
@@ -123,7 +125,6 @@ class Mail:
                   1. check your network\n\
                   2. check whether the imput of SMTP server is right'
             sys.exit()
-            
 
     # login smtp server with user account and passwd
     def login(self):
@@ -136,7 +137,7 @@ class Mail:
     def send2kindle(self,attFile):
         msg = MIMEMultipart()
         send_to = [self.kindleAccount]
-        msg['Subject'] = 'python email2kindle ' + attFile
+        msg['Subject'] = 'python email2kindle '+attFile
         msg['From'] = self.user
         msg['To'] = COMMASPACE.join(send_to)
         msg['Date'] = formatdate(localtime=True)
@@ -175,7 +176,7 @@ def send_watchdog(self):
     except KeyboardInterrupt:
         event.set()
         observer.stop()
-        #NOTICE:tough code,need to change
+        #NOTICE:kill threads by force, need to change
         sys.exit()
 
 # PASSED
@@ -231,10 +232,10 @@ def getPasswd(userName):
     return p1
 
 class SMTPConn(smtplib.SMTP):
-    def __init__(self):
-        smtplib.SMTP.__init__(self)
+    def __init__(self,timeout=10):
+        smtplib.SMTP.__init__(self,timeout=10)
 
-    #detect the smtp server for user,return the suitable SMTP server
+    #recognise the smtp server for user,return the suitable SMTP server
     def configSMTP(self,mailName):
         mailPat = '[^@]+@([^@]+\.[^@]+)'
         m = re.match(mailPat,mailName)
@@ -270,8 +271,10 @@ def show_smtp():
 
 def any_parse():
     parser = ArgumentParser()
-    parser.add_argument('--show',action='store_true')
-    parser.add_argument('--modify',dest='mail',default=None)
+    parser.add_argument('--show',action='store_true',help='show mails and \
+                         their smtp servers in local database')
+    parser.add_argument('--modify',dest='mail',default=None,help='modify \
+                        mail and smtp server')
     args=parser.parse_args()
     if args.show:
         show_smtp()
