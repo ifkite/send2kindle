@@ -27,6 +27,11 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 class GetNameEventHandler(FileSystemEventHandler):
+
+    """
+    Event handler that watch file name when file created.
+    """
+
         # there are other ways to communicate between each threads,
         # for exampes, Queue, Pipe, shared memory
     def __init__(self,pipe,stop_event):
@@ -38,6 +43,11 @@ class GetNameEventHandler(FileSystemEventHandler):
         return self._stop_event.is_set()
 
     def on_created(self,event):
+
+        """
+        When file created, on_created function triggered.
+        """
+
         if not self.getSet():
             try:
                 # self.queue.put(event.src_path)
@@ -51,6 +61,13 @@ class GetNameEventHandler(FileSystemEventHandler):
         self._stop_event.set()
 
 class SendMailThread(Thread):
+    
+    """
+    Representing a specific method that answer the question:
+        when is the right time to send mail.
+    Send mail when got data from GetNameEventHandler object's passing.
+    """
+
     def __init__(self,pipe,stop_event,mail):
         Thread.__init__(self)
         self._stop_event = stop_event
@@ -67,8 +84,12 @@ class SendMailThread(Thread):
     def stop(self):
         self._stop_event.set()
 
-    #send mail
     def run(self):
+        
+        """
+        Get attach file and send mail. 
+        """
+
         while not self.getSet():
             try:
             # src_path = self.queue.get()
@@ -83,11 +104,31 @@ class SendMailThread(Thread):
 
 #PASSED @Aug.7th.2014
 class Config(dict):
+
+    """
+    Read configuration from file or object.
+    """
+
     def __init__(self):
         dict.__init__(self)
 
     def fromPyFile(self,filename):
-        '''examples'''
+
+        """
+        Read config from file.
+            Config file example:
+            :file name:
+                ``config.py``
+            :content:
+                BOOK_PATH = '.'
+                BOOK_FORMAT = ['mobi','txt','pdf','doc','docx','htm','html','rtf','jpg','png','gif','bmp','zip']
+                USER = 'yourmail@mail.com'
+                KINDLE_ACCOUNT = 'yourmail@kindle.com'
+                PASSWD_INPUTTIME = 3
+                PASSWD_TIMEOUT = 3600
+                CONNECT_TIMEOUT = 8#sec
+        """
+
         mod = type(os)('config')
         mod.__file__ = filename
         try:
@@ -99,14 +140,33 @@ class Config(dict):
                    or settings in code.' % (filename)
             sys.exit()
                    
-    # class or object except basestring
     def fromObj(self,obj):
-        '''exampes'''
+
+        '''
+        Read config from object.
+            Config file example:
+            class T:
+                BOOK_PATH = '.'
+                BOOK_FORMAT = ['mobi','txt','pdf','doc','docx','htm','html','rtf','jpg','png','gif','bmp','zip']
+                USER = 'if.miracle@qq.com'
+                KINDLE_ACCOUNT = 'holahello@163.com'
+                PASSWD_INPUTTIME = 3
+                PASSWD_TIMEOUT = 3600
+            t=T()
+            config = Config()
+            config.fromObj(t)  
+        '''
+
         for key in dir(obj):
             if key.isupper():
                 self[key] = getattr(obj,key)
 
 class Mail:
+
+    """
+    Mail class that can login, and send mail. 
+    """
+
     def __init__(self,config,send_strategy):
         self.kindleAccount = config['KINDLE_ACCOUNT']
         self.user = config['USER']
@@ -114,11 +174,15 @@ class Mail:
         self.config = config
         self.send = types.MethodType(send_strategy,self)
 
-    # connect smtp server
     def connect(self):
+
+        """
+        Connect smtp server.
+        """
+
         try:
             self.smtpConn = SMTPConn(timeout=config['CONNECT_TIMEOUT'])
-            smtpServer = self.smtpConn.configSMTP(self.user)
+            smtpServer = self.smtpConn.config_smtp(self.user)
             self.smtpConn.connect(smtpServer)
         except socket.timeout:
             print 'error occured in connection with SMTP server,\n\
@@ -126,8 +190,12 @@ class Mail:
                   2. check whether the imput of SMTP server is right'
             sys.exit()
 
-    # login smtp server with user account and passwd
     def login(self):
+
+        """
+        Login smtp server with user account and password.
+        """
+
         self.smtpConn.login(self.user,self.passwd)
 
     def logout(self):
@@ -135,6 +203,16 @@ class Mail:
         pass
 
     def send2kindle(self,attFile):
+
+        """
+        Send attach file to specific mail.
+        
+        :param attFile:
+            ``Path of the file`` 
+        :type attFile:
+            ``string``
+        """
+
         msg = MIMEMultipart()
         send_to = [self.kindleAccount]
         msg['Subject'] = 'python email2kindle '+attFile
@@ -159,6 +237,13 @@ class Mail:
         pass
 
 def send_watchdog(self):
+
+    """
+    Method of ``Mail``.
+    Send mail when new file created.
+    Alter this method if other condition of sending mail needed.
+    """
+
     r_pipe,w_pipe = Pipe()
     event = Event()
     event_handler = GetNameEventHandler(w_pipe,event)
@@ -189,41 +274,18 @@ def getInput(input_func):
 def inputSMTP(mailName):
     return raw_input('please input %s smtp Server: ' %(mailName))
 
-def checkMailFormat(mailName):
-    pass
-
-def isPklExist():
-    return 'fname.pkl' in os.listdir('.')
-
-def createPkl():
-    with open('fname.pkl','wb'):pass
-#PASSED
-def getFiles():
-    # IOError
-    with open('fname.pkl','rb') as fnamesPkl:
-        try:
-            fnames = pickle.load(fnamesPkl)
-        except EOFError:
-            fnames = []
-        # need to MODIFY
-        newFnames = [f for f in os.listdir('.') if os.path.isfile(f)]
-        newFiles = findNewFiles(fnames,newFnames)
-        return newFiles
-            # print fnames
-#PASSED
-def updateFile():
-    with open('fname.pkl','wb') as fnamesPkl:
-        fileNames = [f for f in os.listdir('.') if os.path.isfile(f)]
-        pickle.dump(fileNames,fnamesPkl)
-        return fileNames
-
-#PASSED
-# suppose that all names in dir not changed
-def findNewFiles(fnames,newFnames):
-    return list(set(newFnames) - set(fnames))
-
 #PASSED
 def getPasswd(userName):
+
+    """
+    Get password from user's input.
+    
+    :param userName:
+        A hint for user to get password.
+    :type userName:
+        ``string``
+    """
+
     getPassTwice = lambda:(getpass('input passwd of %s: '%(userName)),
                            getpass('input passwd again: '))
     p1,p2 = getPassTwice()
@@ -232,11 +294,28 @@ def getPasswd(userName):
     return p1
 
 class SMTPConn(smtplib.SMTP):
+
+    """
+    Connect SMTP server. 
+    """
+
     def __init__(self,timeout=10):
         smtplib.SMTP.__init__(self,timeout=10)
 
     #recognise the smtp server for user,return the suitable SMTP server
-    def configSMTP(self,mailName):
+    def config_smtp(self,mailName):
+
+        """
+        Config SMTP server for mail.
+        If SMTP server exists, return the name,
+        else get a new server string from user input.
+
+        :param mailName:
+            Mail that will send mail that attached files.
+        :type mailName:
+            ``string``
+        """
+
         mailPat = '[^@]+@([^@]+\.[^@]+)'
         m = re.match(mailPat,mailName)
         # should check after user inputing their mail
@@ -254,6 +333,16 @@ class SMTPConn(smtplib.SMTP):
         return smtpName
 
 def modify_smtp(modify_mail):
+
+    """
+    Modify smtp server stored in smtp.db.    
+
+    :param modify_mail:
+        Mail that need to modify smtp server.
+    :type modify_mail:
+        ``string``
+    """
+
     smtp_db = bsddb.hashopen('smtp.db')
     smtp = raw_input('please input new smtp server: ')
     #NOTICE:add some code to try to connect server
@@ -263,6 +352,11 @@ def modify_smtp(modify_mail):
     smtp_db.close()
 
 def show_smtp():
+
+    """
+    Print ``mail`` and ``smtp server`` pairs. 
+    """
+
     smtp_db = bsddb.hashopen('smtp.db')
     print '{0:18}  {1:18}'.format('mail','smtp server')
     for key,val in smtp_db.items():
@@ -270,6 +364,11 @@ def show_smtp():
     smtp_db.close()
 
 def any_parse():
+
+    """
+    Check if ``show`` or ``modify`` argument exists.
+    """
+
     parser = ArgumentParser()
     parser.add_argument('--show',action='store_true',help='show mails and \
                          their smtp servers in local database')
