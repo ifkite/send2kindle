@@ -32,11 +32,11 @@ class GetNameEventHandler(FileSystemEventHandler):
     Event handler that watch file name when file created.
     """
 
-        # there are other ways to communicate between each threads,
-        # for exampes, Queue, Pipe, shared memory
-    def __init__(self,pipe,stop_event):
+    # there are other ways to communicate between each threads,
+    # for exampes, Queue, Pipe, shared memory
+    def __init__(self,queue,stop_event):
         super(GetNameEventHandler,self).__init__()
-        self.pipe = pipe
+        self.queue = queue 
         self._stop_event = stop_event
 
     def getSet(self):
@@ -50,10 +50,10 @@ class GetNameEventHandler(FileSystemEventHandler):
 
         if not self.getSet():
             try:
-                # self.queue.put(event.src_path)
-                # self.queue.join()
-                self.pipe.send(event.src_path)
+                self.queue.put(event.src_path)
+                #self.pipe.send(event.src_path)
                 time.sleep(0.1)
+                self.queue.join()
             except:
                 pass
 
@@ -68,10 +68,10 @@ class SendMailThread(Thread):
     Send mail when got data from GetNameEventHandler object's passing.
     """
 
-    def __init__(self,pipe,stop_event,mail):
+    def __init__(self,queue,stop_event,mail):
         Thread.__init__(self)
         self._stop_event = stop_event
-        self.pipe = pipe
+        self.queue = queue
         self.mail = mail
         if hasattr(self,'daemon'):
             self.daemon = True
@@ -92,13 +92,12 @@ class SendMailThread(Thread):
 
         while not self.getSet():
             try:
-            # src_path = self.queue.get()
-            # print src_path
-            # self.queue.task_done()
-                attFile = self.pipe.recv()
+                attFile = self.queue.get()
+                #attFile = self.pipe.recv()
                 self.mail.send2kindle(attFile)
                 print 'sent %s to kindle' %(attFile)
                 time.sleep(0.1)
+                self.queue.task_done()
             except:
                 break
 
@@ -244,10 +243,13 @@ def send_watchdog(self):
     Alter this method if other condition of sending mail needed.
     """
 
-    r_pipe,w_pipe = Pipe()
+    #r_pipe,w_pipe = Pipe()
+    queue = Queue.Queue()
     event = Event()
-    event_handler = GetNameEventHandler(w_pipe,event)
-    send_mail_thread = SendMailThread(r_pipe,event,self)
+    #event_handler = GetNameEventHandler(w_pipe,event)
+    #send_mail_thread = SendMailThread(r_pipe,event,self)
+    event_handler = GetNameEventHandler(queue,event)
+    send_mail_thread = SendMailThread(queue,event,self)
     send_mail_thread.start()
 
     observer = Observer()
