@@ -1,5 +1,7 @@
 *.pyc
 *.db
 *.pkl
-test.py
+*.bak
+config.py
+demo.py
 /venv
