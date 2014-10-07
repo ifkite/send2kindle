@@ -24,7 +24,7 @@ class Book:
             target = self._book+'/'+str(book_id)
             return douban_base(target)
         return wrapper
-    
+
     #PASSED
     def get_tags(self,book_id=0):
         def wrapper():
